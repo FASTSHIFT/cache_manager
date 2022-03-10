@@ -103,7 +103,7 @@ static void cm_close_node(cache_manager_node_t* node)
     memset(node, 0, sizeof(cache_manager_node_t));
 }
 
-static void cm_node_inc_ref_cnt(cache_manager_node_t* node)
+static void cm_inc_node_ref_cnt(cache_manager_node_t* node)
 {
     node->priv.ref_cnt++;
 #if CACHE_MANAGER_REF_CNT_LIMIT
@@ -269,7 +269,7 @@ cache_manager_res_t cm_open(cache_manager_t* cm, int id, cache_manager_node_t** 
 
     node = cm_find_node(cm, id);
     if (node) {
-        cm_node_inc_ref_cnt(node);
+        cm_inc_node_ref_cnt(node);
         *node_p = node;
         cm->cache_hit_cnt++;
         CM_LOG_INFO("id:%d cache hit context %p, ref_cnt = %" PRIu32, node->id, node->context.ptr, node->priv.ref_cnt);
@@ -290,7 +290,7 @@ cache_manager_res_t cm_open(cache_manager_t* cm, int id, cache_manager_node_t** 
 
     if (node) {
         if (cm_open_node(cm, node, id)) {
-            cm_node_inc_ref_cnt(node);
+            cm_inc_node_ref_cnt(node);
             *node_p = node;
             return CACHE_MANAGER_RES_OK;
         } else {
@@ -307,7 +307,7 @@ cache_manager_res_t cm_open(cache_manager_t* cm, int id, cache_manager_node_t** 
         if (cm_open_node(cm, &node_tmp, id)) {
 
             cm_close_node(node);
-            cm_node_inc_ref_cnt(&node_tmp);
+            cm_inc_node_ref_cnt(&node_tmp);
 
             *node = node_tmp;
             *node_p = node;
