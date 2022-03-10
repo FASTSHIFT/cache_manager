@@ -76,6 +76,8 @@ typedef struct cache_manager_s {
     uint32_t cache_num;
     uint32_t cache_hit_cnt;
     uint32_t cache_open_cnt;
+    uint32_t cache_head;
+    uint32_t cache_tail;
     cache_manager_mode_t mode;
 
     cache_manager_user_cb_t create_cb;

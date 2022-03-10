@@ -110,7 +110,7 @@ int main(int argc, char* argv[])
 
     cache_manager_t* cm = cm_create(
         6,
-        CACHE_MANAGER_MODE_LRU,
+        CACHE_MANAGER_MODE_FIFO,
         create_cb,
         delete_cb,
         custom_tick_get,

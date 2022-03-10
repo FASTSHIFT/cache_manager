@@ -169,24 +169,61 @@ static cache_manager_node_t* cm_find_reuse_lru_life(cache_manager_t* cm)
     return reuse_node;
 }
 
+static cache_manager_node_t* cm_node_fifo_peek(cache_manager_t* cm)
+{
+    if (cm->cache_head == cm->cache_tail) {
+        return NULL;
+    }
+
+    return &(cm->cache_node_array[cm->cache_tail]);
+}
+
+static cache_manager_node_t* cm_node_fifo_read(cache_manager_t* cm)
+{
+    cache_manager_node_t* node = cm_node_fifo_peek(cm);
+    if (!node) {
+        return NULL;
+    }
+
+    cm->cache_tail = (cm->cache_tail + 1) % cm->cache_num;
+    return node;
+}
+
+static void cm_node_fifo_write(cache_manager_t* cm)
+{
+    uint32_t index = (uint32_t)(cm->cache_head + 1) % cm->cache_num;
+    if (index != cm->cache_tail) {
+        // cm->cache_node_array[cm->cache_head] = *node;
+        cm->cache_head = index;
+    }
+}
+
+static cache_manager_node_t* cm_find_reuse_fifo(cache_manager_t* cm)
+{
+    return cm_node_fifo_peek(cm);
+}
+
 static cache_manager_node_t* cm_find_reuse_node(cache_manager_t* cm)
 {
     switch (cm->mode) {
     case CACHE_MANAGER_MODE_LFU:
         return cm_find_reuse_lfu(cm);
-        break;
+
     case CACHE_MANAGER_MODE_RANDOM:
         return cm_find_reuse_random(cm);
-        break;
+
     case CACHE_MANAGER_MODE_LIFE:
     case CACHE_MANAGER_MODE_LRU:
         return cm_find_reuse_lru_life(cm);
-        break;
+
+    case CACHE_MANAGER_MODE_FIFO:
+        return cm_find_reuse_fifo(cm);
 
     default:
         CM_LOG_ERROR("unsupport cache mode: %d", cm->mode);
         break;
     }
+
     return NULL;
 }
 
@@ -276,6 +313,7 @@ cache_manager_res_t cm_open(cache_manager_t* cm, int id, cache_manager_node_t** 
     }
 
     node = cm_find_node(cm, id);
+
     if (node) {
         cm_inc_node_ref_cnt(node);
         *node_p = node;
@@ -285,7 +323,7 @@ cache_manager_res_t cm_open(cache_manager_t* cm, int id, cache_manager_node_t** 
         if (cm->mode == CACHE_MANAGER_MODE_LIFE || cm->mode == CACHE_MANAGER_MODE_LRU) {
             uint32_t gain = (cm->mode == CACHE_MANAGER_MODE_LRU) ? 1 : node->priv.time_to_open;
             node->priv.life += gain * CACHE_MANAGER_LIFE_GAIN;
-            
+
             if (node->priv.life > CACHE_MANAGER_LIFE_LIMIT) {
                 node->priv.life = CACHE_MANAGER_LIFE_LIMIT;
             }
@@ -302,6 +340,11 @@ cache_manager_res_t cm_open(cache_manager_t* cm, int id, cache_manager_node_t** 
         if (cm_open_node(cm, node, id)) {
             cm_inc_node_ref_cnt(node);
             *node_p = node;
+
+            if (cm->mode == CACHE_MANAGER_MODE_FIFO) {
+                cm_node_fifo_write(cm);
+            }
+
             return CACHE_MANAGER_RES_OK;
         } else {
             return CACHE_MANAGER_RES_ERR_CREATE_FAILED;
@@ -315,12 +358,16 @@ cache_manager_res_t cm_open(cache_manager_t* cm, int id, cache_manager_node_t** 
         cache_manager_node_t node_tmp = { 0 };
 
         if (cm_open_node(cm, &node_tmp, id)) {
-
             cm_close_node(node);
             cm_inc_node_ref_cnt(&node_tmp);
 
             *node = node_tmp;
             *node_p = node;
+
+            if (cm->mode == CACHE_MANAGER_MODE_FIFO) {
+                cm_node_fifo_read(cm);
+                cm_node_fifo_write(cm);
+            }
 
             return CACHE_MANAGER_RES_OK;
         } else {
@@ -352,6 +399,7 @@ cache_manager_res_t cm_invalidate(cache_manager_t* cm, int id)
 
 void cm_clear(cache_manager_t* cm)
 {
+    cm->cache_head = cm->cache_tail = 0;
     for (uint32_t i = 0; i < cm->cache_num; i++) {
         cache_manager_node_t* node = &(cm->cache_node_array[i]);
         if (node->id != CACHE_MANAGER_INVALIDATE_ID) {
