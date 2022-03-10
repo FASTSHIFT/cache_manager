@@ -1,8 +1,8 @@
 #include "cache_manager.h"
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <inttypes.h>
 
 #define CACHE_MANAGER_INVALIDATE_ID 0
 
@@ -18,6 +18,8 @@
 /*Don't let life to be greater than this limit because it would require a lot of time to
  * "die" from very high values*/
 #define CACHE_MANAGER_LIFE_LIMIT 1000
+
+#define CACHE_MANAGER_REF_CNT_LIMIT 100
 
 #define CACHE_MANAGER_MALLOC(size) malloc(size)
 #define CACHE_MANAGER_REALLOC(ptr, size) realloc(ptr, size)
@@ -99,6 +101,16 @@ static void cm_close_node(cache_manager_node_t* node)
     CM_LOG_INFO("id:%d closed, ref_cnt = %" PRIu32, node->id, node->priv.ref_cnt);
 
     memset(node, 0, sizeof(cache_manager_node_t));
+}
+
+static void cm_node_inc_ref_cnt(cache_manager_node_t* node)
+{
+    node->priv.ref_cnt++;
+#if CACHE_MANAGER_REF_CNT_LIMIT
+    if (node->priv.ref_cnt > CACHE_MANAGER_REF_CNT_LIMIT) {
+        node->priv.ref_cnt = CACHE_MANAGER_REF_CNT_LIMIT;
+    }
+#endif
 }
 
 static cache_manager_node_t* cm_find_node(cache_manager_t* cm, int id)
@@ -257,7 +269,7 @@ cache_manager_res_t cm_open(cache_manager_t* cm, int id, cache_manager_node_t** 
 
     node = cm_find_node(cm, id);
     if (node) {
-        node->priv.ref_cnt++;
+        cm_node_inc_ref_cnt(node);
         *node_p = node;
         cm->cache_hit_cnt++;
         CM_LOG_INFO("id:%d cache hit context %p, ref_cnt = %" PRIu32, node->id, node->context.ptr, node->priv.ref_cnt);
@@ -278,7 +290,7 @@ cache_manager_res_t cm_open(cache_manager_t* cm, int id, cache_manager_node_t** 
 
     if (node) {
         if (cm_open_node(cm, node, id)) {
-            node->priv.ref_cnt++;
+            cm_node_inc_ref_cnt(node);
             *node_p = node;
             return CACHE_MANAGER_RES_OK;
         } else {
@@ -295,8 +307,8 @@ cache_manager_res_t cm_open(cache_manager_t* cm, int id, cache_manager_node_t** 
         if (cm_open_node(cm, &node_tmp, id)) {
 
             cm_close_node(node);
+            cm_node_inc_ref_cnt(&node_tmp);
 
-            node_tmp.priv.ref_cnt++;
             *node = node_tmp;
             *node_p = node;
 
