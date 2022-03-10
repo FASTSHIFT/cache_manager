@@ -2,24 +2,41 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 
 #define CACHE_MANAGER_INVALIDATE_ID 0
 
+/*Enable log*/
 #define CACHE_MANAGER_USE_LOG 1
+
+/*Decrement life with this value on every open*/
+#define CACHE_MANAGER_AGING 1
+
+/*Boost life by this factor (multiply time_to_open with this value)*/
+#define CACHE_MANAGER_LIFE_GAIN 1
+
+/*Don't let life to be greater than this limit because it would require a lot of time to
+ * "die" from very high values*/
+#define CACHE_MANAGER_LIFE_LIMIT 1000
+
+#define CACHE_MANAGER_MALLOC(size) malloc(size)
+#define CACHE_MANAGER_REALLOC(ptr, size) realloc(ptr, size)
+#define CACHE_MANAGER_FREE(ptr) free(ptr)
+#define CACHE_MANAGER_RAND() rand()
 
 #if CACHE_MANAGER_USE_LOG
 #include <stdio.h>
-#define _CM_LOG(format, ...) printf("[CM]" format "\r\n", ##__VA_ARGS__)
-#define CM_LOG_INFO(format, ...) _CM_LOG("[Info] " format, ##__VA_ARGS__)
-#define CM_LOG_WARN(format, ...) _CM_LOG("[Warn] " format, ##__VA_ARGS__)
-#define CM_LOG_ERROR(format, ...) _CM_LOG("[Error] " format, ##__VA_ARGS__)
+#define CM_LOG(format, ...) printf("[CM]" format "\r\n", ##__VA_ARGS__)
+#define CM_LOG_INFO(format, ...) CM_LOG("[Info] " format, ##__VA_ARGS__)
+#define CM_LOG_WARN(format, ...) CM_LOG("[Warn] " format, ##__VA_ARGS__)
+#define CM_LOG_ERROR(format, ...) CM_LOG("[Error] " format, ##__VA_ARGS__)
 #else
 #define CM_LOG_INFO(...)
 #define CM_LOG_WARN(...)
 #define CM_LOG_ERROR(...)
 #endif
 
-uint32_t cm_tick_elaps(cache_manager_t* cm, uint32_t prev_tick)
+static uint32_t cm_tick_elaps(cache_manager_t* cm, uint32_t prev_tick)
 {
     uint32_t act_time = cm->tick_get_cb();
 
@@ -34,6 +51,39 @@ uint32_t cm_tick_elaps(cache_manager_t* cm, uint32_t prev_tick)
     return prev_tick;
 }
 
+static bool cm_open_node(cache_manager_t* cm, cache_manager_node_t* node, int id)
+{
+    uint32_t start_time = 0;
+    cache_manager_node_t node_tmp = { 0 };
+
+    CM_LOG_INFO("id:%d creating...", id);
+
+    if (cm->tick_get_cb) {
+        start_time = cm->tick_get_cb();
+    }
+
+    node_tmp.cache_manager = cm;
+    node_tmp.id = id;
+    bool success = cm->create_cb(&node_tmp);
+
+    if (cm->tick_get_cb) {
+        node_tmp.priv.time_to_open = cm_tick_elaps(cm, start_time);
+        CM_LOG_INFO("time cost: %" PRIu32, node_tmp.priv.time_to_open);
+    }
+
+    if (node_tmp.priv.time_to_open == 0) {
+        node_tmp.priv.time_to_open = 1;
+    }
+
+    if (success) {
+        *node = node_tmp;
+    } else {
+        CM_LOG_WARN("id:%d create failed", id);
+    }
+
+    return success;
+}
+
 static void cm_close_node(cache_manager_node_t* node)
 {
     if (node->id == CACHE_MANAGER_INVALIDATE_ID) {
@@ -46,7 +96,7 @@ static void cm_close_node(cache_manager_node_t* node)
         cm->delete_cb(node);
     }
 
-    CM_LOG_INFO("id:%d closed, ref_cnt = %d", node->id, node->priv.ref_cnt);
+    CM_LOG_INFO("id:%d closed, ref_cnt = %" PRIu32, node->id, node->priv.ref_cnt);
 
     memset(node, 0, sizeof(cache_manager_node_t));
 }
@@ -85,8 +135,24 @@ static cache_manager_node_t* cm_find_reuse_lfu(cache_manager_t* cm)
 
 static cache_manager_node_t* cm_find_reuse_random(cache_manager_t* cm)
 {
-    uint32_t index = rand() % cm->cache_num;
+    uint32_t index = CACHE_MANAGER_RAND() % cm->cache_num;
     return &(cm->cache_node_array[index]);
+}
+
+static cache_manager_node_t* cm_find_reuse_life(cache_manager_t* cm)
+{
+    /*Find an entry to reuse. Select the entry with the least life*/
+    cache_manager_node_t* reuse_node = NULL;
+    int life_min = INT32_MAX;
+    for (uint32_t i = 0; i < cm->cache_num; i++) {
+        cache_manager_node_t* node = &(cm->cache_node_array[i]);
+        if (node->id != CACHE_MANAGER_INVALIDATE_ID
+            && node->priv.life < life_min) {
+            reuse_node = node;
+            life_min = node->priv.life;
+        }
+    }
+    return reuse_node;
 }
 
 static cache_manager_node_t* cm_find_reuse_node(cache_manager_t* cm)
@@ -98,41 +164,15 @@ static cache_manager_node_t* cm_find_reuse_node(cache_manager_t* cm)
     case CACHE_MANAGER_MODE_RANDOM:
         return cm_find_reuse_random(cm);
         break;
+    case CACHE_MANAGER_MODE_LIFE:
+        return cm_find_reuse_life(cm);
+        break;
 
     default:
         CM_LOG_ERROR("unsupport cache mode: %d", cm->mode);
         break;
     }
     return NULL;
-}
-
-static bool cm_open_node(cache_manager_t* cm, cache_manager_node_t* node, int id)
-{
-    uint32_t start_time = 0;
-    cache_manager_node_t node_tmp = { 0 };
-
-    CM_LOG_INFO("id:%d creating...", id);
-
-    if (cm->tick_get_cb) {
-        start_time = cm->tick_get_cb();
-    }
-
-    node_tmp.cache_manager = cm;
-    node_tmp.id = id;
-    bool success = cm->create_cb(&node_tmp);
-
-    if (cm->tick_get_cb) {
-        node_tmp.priv.time_to_open = cm_tick_elaps(cm, start_time);
-        CM_LOG_INFO("time cost: %d", node_tmp.priv.time_to_open);
-    }
-
-    if (success) {
-        *node = node_tmp;
-    } else {
-        CM_LOG_WARN("id:%d create failed", id);
-    }
-
-    return success;
 }
 
 cache_manager_t* cm_create(
@@ -143,7 +183,7 @@ cache_manager_t* cm_create(
     cache_manager_tick_get_cb_t tick_get_cb,
     void* user_data)
 {
-    cache_manager_t* cm = malloc(sizeof(cache_manager_t));
+    cache_manager_t* cm = CACHE_MANAGER_MALLOC(sizeof(cache_manager_t));
 
     if (!cm) {
         return NULL;
@@ -151,7 +191,7 @@ cache_manager_t* cm_create(
 
     memset(cm, 0, sizeof(cache_manager_t));
 
-    cm->cache_node_array = malloc(sizeof(cache_manager_node_t) * cache_num);
+    cm->cache_node_array = CACHE_MANAGER_MALLOC(sizeof(cache_manager_node_t) * cache_num);
 
     if (!cm->cache_node_array) {
         free(cm);
@@ -173,7 +213,7 @@ cache_manager_t* cm_create(
 void cm_set_cache_num(cache_manager_t* cm, uint32_t cache_num)
 {
     cm_clear(cm);
-    cm->cache_node_array = realloc(cm->cache_node_array, cache_num);
+    cm->cache_node_array = CACHE_MANAGER_REALLOC(cm->cache_node_array, cache_num);
 
     if (!cm->cache_node_array) {
         return;
@@ -186,12 +226,11 @@ void cm_set_cache_num(cache_manager_t* cm, uint32_t cache_num)
 void cm_delete(cache_manager_t* cm)
 {
     cm_clear(cm);
-    if(cm->cache_node_array)
-    {
-        free(cm->cache_node_array);
+    if (cm->cache_node_array) {
+        CACHE_MANAGER_FREE(cm->cache_node_array);
         cm->cache_node_array = NULL;
     }
-    free(cm);
+    CACHE_MANAGER_FREE(cm);
 }
 
 cache_manager_res_t cm_open(cache_manager_t* cm, int id, cache_manager_node_t** node_p)
@@ -200,16 +239,36 @@ cache_manager_res_t cm_open(cache_manager_t* cm, int id, cache_manager_node_t** 
         return CACHE_MANAGER_RES_ERR_ID_INVALIDATE;
     }
 
+    cache_manager_node_t* node;
+
     cm->cache_open_cnt++;
 
-    cache_manager_node_t* node;
+    if (cm->mode == CACHE_MANAGER_MODE_LIFE) {
+        /*Decrement all lifes. Make the entries older*/
+        node = &cm->cache_node_array[0];
+        for (uint32_t i = 0; i < cm->cache_num; i++) {
+            if (node->id != CACHE_MANAGER_INVALIDATE_ID
+                && node->priv.life > INT32_MIN + CACHE_MANAGER_AGING) {
+                node->priv.life -= CACHE_MANAGER_AGING;
+            }
+            node++;
+        }
+    }
 
     node = cm_find_node(cm, id);
     if (node) {
         node->priv.ref_cnt++;
         *node_p = node;
         cm->cache_hit_cnt++;
-        CM_LOG_INFO("id:%d cache hit context %p, ref_cnt = %d", node->id, node->context.ptr, node->priv.ref_cnt);
+        CM_LOG_INFO("id:%d cache hit context %p, ref_cnt = %" PRIu32, node->id, node->context.ptr, node->priv.ref_cnt);
+
+        if (cm->mode == CACHE_MANAGER_MODE_LIFE) {
+            node->priv.life += node->priv.time_to_open * CACHE_MANAGER_LIFE_GAIN;
+            if (node->priv.life > CACHE_MANAGER_LIFE_LIMIT) {
+                node->priv.life = CACHE_MANAGER_LIFE_LIMIT;
+            }
+        }
+
         return CACHE_MANAGER_RES_OK;
     }
 

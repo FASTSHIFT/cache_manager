@@ -24,9 +24,9 @@ typedef struct cache_manager_node_s {
     } context;
 
     struct {
-        int life;
-        int ref_cnt;
-        int time_to_open;
+        int32_t life;
+        uint32_t ref_cnt;
+        uint32_t time_to_open;
     } priv;
 } cache_manager_node_t;
 

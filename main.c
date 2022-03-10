@@ -7,38 +7,46 @@
 
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof(arr[0]))
 
-static const char* str_arr[] = {
-    "A",
-    "BB",
-    "CCC",
-    "DDDD",
-    "EEEEE",
-    "FFFFFF",
-    "GGGGGGG",
-    "1",
-    "22",
-    "333",
-    "4444",
-    "55555",
-    "666666",
-    "7777777",
+typedef struct {
+    char name[32];
+    int time_cost;
+} user_data_t;
+
+static user_data_t user_data_arr[] = {
+    { "A", 1 },
+    { "BB", 2 },
+    { "CCC", 3 },
+    { "DDDD", 4 },
+    { "EEEEE", 5 },
+    { "FFFFFF", 6 },
+    { "GGGGGGG", 7 },
+    { "1", 1 },
+    { "22", 2 },
+    { "333", 3 },
+    { "4444", 4 },
+    { "55555", 5 },
+    { "666666", 6 },
+    { "7777777", 7 },
 };
 
 static bool create_cb(cache_manager_node_t* node)
 {
     int id = node->id - 1;
 
-    if (id >= ARRAY_SIZE(str_arr)) {
+    if (id >= ARRAY_SIZE(user_data_arr)) {
         return false;
     }
 
-    uint32_t size = strlen(str_arr[id]) + 1;
-    char* str = malloc(size);
+    user_data_t* user_data_p = malloc(sizeof(user_data_t));
 
-    strcpy(str, str_arr[id]);
+    *user_data_p = user_data_arr[id];
 
-    node->context.ptr = str;
-    node->context.size = size;
+    usleep(user_data_arr
+    
+    [id].time_cost * 1000);
+
+    node->context.ptr = user_data_p;
+    node->context.size = sizeof(user_data_t);
 
     return true;
 }
@@ -65,12 +73,12 @@ static int gen_id(bool rnd)
     static int id = 0;
 
     if (rnd) {
-        id = rand() % (ARRAY_SIZE(str_arr) - 1);
+        id = rand() % (ARRAY_SIZE(user_data_arr) - 1);
     } else {
         id++;
     }
 
-    id %= (ARRAY_SIZE(str_arr) - 1);
+    id %= (ARRAY_SIZE(user_data_arr) - 1);
 
     return id + 1;
 }
@@ -80,8 +88,8 @@ int main(int argc, char* argv[])
     printf("cache_manager test\n");
 
     cache_manager_t* cm = cm_create(
-        5,
-        CACHE_MANAGER_MODE_RANDOM,
+        6,
+        CACHE_MANAGER_MODE_LIFE,
         create_cb,
         delete_cb,
         custom_tick_get,
@@ -89,20 +97,21 @@ int main(int argc, char* argv[])
 
     srand(custom_tick_get());
 
-    for (int i = 0; i < 10000; i++) {
+    for (int i = 0; i < 1000; i++) {
 
-        int id = gen_id(false);
+        int id = gen_id(true);
 
         cache_manager_node_t* node;
 
         if (cm_open(cm, id, &node) == CACHE_MANAGER_RES_OK) {
-            printf("id:%d open success, data = %s\n", id, (const char*)node->context.ptr);
+            user_data_t* user_data_p = node->context.ptr;
+            printf("id:%d open success, data = %s\n", id, user_data_p->name);
         } else {
             printf("id:%d open failed\n", id);
         }
     }
 
-    printf("cache hit rate: %d\n", cm_get_cache_hit_rate(cm));
+    printf("cache hit rate: %0.1f%%\n", (double)cm_get_cache_hit_rate(cm) / 10);
 
     cm_delete(cm);
 
