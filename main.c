@@ -97,7 +97,7 @@ int main(int argc, char* argv[])
 
     for (int i = 0; i < 1000; i++) {
 
-        int id = gen_id(true);
+        int id = gen_id(false);
 
         cache_manager_node_t* node;
 

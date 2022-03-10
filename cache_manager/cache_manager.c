@@ -198,6 +198,7 @@ cache_manager_t* cm_create(
     cache_manager_t* cm = CACHE_MANAGER_MALLOC(sizeof(cache_manager_t));
 
     if (!cm) {
+        CM_LOG_ERROR("cache_manager malloc failed");
         return NULL;
     }
 
@@ -206,7 +207,8 @@ cache_manager_t* cm_create(
     cm->cache_node_array = CACHE_MANAGER_MALLOC(sizeof(cache_manager_node_t) * cache_num);
 
     if (!cm->cache_node_array) {
-        free(cm);
+        CM_LOG_ERROR("cache_node_array malloc failed");
+        CACHE_MANAGER_FREE(cm);
         return NULL;
     }
 
@@ -219,6 +221,8 @@ cache_manager_t* cm_create(
     cm->tick_get_cb = tick_get_cb;
     cm->user_data = user_data;
 
+    CM_LOG_INFO("cache_manager create OK, cache mode = %d, cache num = %d", mode, cache_num);
+
     return cm;
 }
 
@@ -228,6 +232,7 @@ void cm_set_cache_num(cache_manager_t* cm, uint32_t cache_num)
     cm->cache_node_array = CACHE_MANAGER_REALLOC(cm->cache_node_array, cache_num);
 
     if (!cm->cache_node_array) {
+        CM_LOG_ERROR("cache_node_array realloc failed");
         return;
     }
 
