@@ -22,15 +22,11 @@
  */
 
 #include "cache_manager.h"
+#include "cache_manager_config.h"
 #include <inttypes.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #define CACHE_MANAGER_INVALIDATE_ID 0
-
-/*Enable log*/
-#define CACHE_MANAGER_USE_LOG 1
 
 /*Decrement life with this value on every open*/
 #define CACHE_MANAGER_AGING 1
@@ -43,23 +39,6 @@
 #define CACHE_MANAGER_LIFE_LIMIT 1000
 
 #define CACHE_MANAGER_REF_CNT_LIMIT 100
-
-#define CACHE_MANAGER_MALLOC(size) malloc(size)
-#define CACHE_MANAGER_REALLOC(ptr, size) realloc(ptr, size)
-#define CACHE_MANAGER_FREE(ptr) free(ptr)
-#define CACHE_MANAGER_RAND() rand()
-
-#if CACHE_MANAGER_USE_LOG
-#include <stdio.h>
-#define CM_LOG(format, ...) printf("[CM]" format "\r\n", ##__VA_ARGS__)
-#define CM_LOG_INFO(format, ...) CM_LOG("[Info] " format, ##__VA_ARGS__)
-#define CM_LOG_WARN(format, ...) CM_LOG("[Warn] " format, ##__VA_ARGS__)
-#define CM_LOG_ERROR(format, ...) CM_LOG("[Error] " format, ##__VA_ARGS__)
-#else
-#define CM_LOG_INFO(...)
-#define CM_LOG_WARN(...)
-#define CM_LOG_ERROR(...)
-#endif
 
 static uint32_t cm_tick_elaps(cache_manager_t* cm, uint32_t prev_tick)
 {
