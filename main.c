@@ -41,9 +41,7 @@ static bool create_cb(cache_manager_node_t* node)
 
     *user_data_p = user_data_arr[id];
 
-    usleep(user_data_arr
-    
-    [id].time_cost * 1000);
+    usleep(user_data_arr[id].time_cost * 1000);
 
     node->context.ptr = user_data_p;
     node->context.size = sizeof(user_data_t);
