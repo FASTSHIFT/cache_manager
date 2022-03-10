@@ -153,7 +153,7 @@ static cache_manager_node_t* cm_find_reuse_random(cache_manager_t* cm)
     return &(cm->cache_node_array[index]);
 }
 
-static cache_manager_node_t* cm_find_reuse_life(cache_manager_t* cm)
+static cache_manager_node_t* cm_find_reuse_lru_life(cache_manager_t* cm)
 {
     /*Find an entry to reuse. Select the entry with the least life*/
     cache_manager_node_t* reuse_node = NULL;
@@ -179,7 +179,8 @@ static cache_manager_node_t* cm_find_reuse_node(cache_manager_t* cm)
         return cm_find_reuse_random(cm);
         break;
     case CACHE_MANAGER_MODE_LIFE:
-        return cm_find_reuse_life(cm);
+    case CACHE_MANAGER_MODE_LRU:
+        return cm_find_reuse_lru_life(cm);
         break;
 
     default:
@@ -262,7 +263,7 @@ cache_manager_res_t cm_open(cache_manager_t* cm, int id, cache_manager_node_t** 
 
     cm->cache_open_cnt++;
 
-    if (cm->mode == CACHE_MANAGER_MODE_LIFE) {
+    if (cm->mode == CACHE_MANAGER_MODE_LIFE || cm->mode == CACHE_MANAGER_MODE_LRU) {
         /*Decrement all lifes. Make the entries older*/
         node = &cm->cache_node_array[0];
         for (uint32_t i = 0; i < cm->cache_num; i++) {
@@ -281,8 +282,10 @@ cache_manager_res_t cm_open(cache_manager_t* cm, int id, cache_manager_node_t** 
         cm->cache_hit_cnt++;
         CM_LOG_INFO("id:%d cache hit context %p, ref_cnt = %" PRIu32, node->id, node->context.ptr, node->priv.ref_cnt);
 
-        if (cm->mode == CACHE_MANAGER_MODE_LIFE) {
-            node->priv.life += node->priv.time_to_open * CACHE_MANAGER_LIFE_GAIN;
+        if (cm->mode == CACHE_MANAGER_MODE_LIFE || cm->mode == CACHE_MANAGER_MODE_LRU) {
+            uint32_t gain = (cm->mode == CACHE_MANAGER_MODE_LRU) ? 1 : node->priv.time_to_open;
+            node->priv.life += gain * CACHE_MANAGER_LIFE_GAIN;
+            
             if (node->priv.life > CACHE_MANAGER_LIFE_LIMIT) {
                 node->priv.life = CACHE_MANAGER_LIFE_LIMIT;
             }

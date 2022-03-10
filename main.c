@@ -110,7 +110,7 @@ int main(int argc, char* argv[])
 
     cache_manager_t* cm = cm_create(
         6,
-        CACHE_MANAGER_MODE_LIFE,
+        CACHE_MANAGER_MODE_LRU,
         create_cb,
         delete_cb,
         custom_tick_get,
@@ -119,8 +119,7 @@ int main(int argc, char* argv[])
     srand(custom_tick_get());
 
     for (int i = 0; i < 1000; i++) {
-
-        int id = gen_id(false);
+        int id = gen_id(true);
 
         cache_manager_node_t* node;
 
