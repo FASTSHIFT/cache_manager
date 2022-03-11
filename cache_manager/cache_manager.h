@@ -65,9 +65,9 @@ typedef enum cache_manager_mode_e {
 typedef enum cache_manager_res_e {
     CACHE_MANAGER_RES_OK,
     CACHE_MANAGER_RES_ERR_ID_NOT_FOUND,
-    CACHE_MANAGER_RES_ERR_ID_EXIST,
     CACHE_MANAGER_RES_ERR_ID_INVALIDATE,
     CACHE_MANAGER_RES_ERR_CREATE_FAILED,
+    CACHE_MANAGER_RES_ERR_MODE,
     CACHE_MANAGER_RES_ERR_UNKNOW
 } cache_manager_res_t;
 

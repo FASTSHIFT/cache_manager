@@ -178,7 +178,7 @@ static cache_manager_node_t* cm_node_fifo_peek(cache_manager_t* cm)
     return &(cm->cache_node_array[cm->cache_tail]);
 }
 
-static cache_manager_node_t* cm_node_fifo_read(cache_manager_t* cm)
+static cache_manager_node_t* cm_node_fifo_pop(cache_manager_t* cm)
 {
     cache_manager_node_t* node = cm_node_fifo_peek(cm);
     if (!node) {
@@ -189,11 +189,10 @@ static cache_manager_node_t* cm_node_fifo_read(cache_manager_t* cm)
     return node;
 }
 
-static void cm_node_fifo_write(cache_manager_t* cm)
+static void cm_node_fifo_push(cache_manager_t* cm)
 {
     uint32_t index = (uint32_t)(cm->cache_head + 1) % cm->cache_num;
     if (index != cm->cache_tail) {
-        // cm->cache_node_array[cm->cache_head] = *node;
         cm->cache_head = index;
     }
 }
@@ -342,7 +341,7 @@ cache_manager_res_t cm_open(cache_manager_t* cm, int id, cache_manager_node_t** 
             *node_p = node;
 
             if (cm->mode == CACHE_MANAGER_MODE_FIFO) {
-                cm_node_fifo_write(cm);
+                cm_node_fifo_push(cm);
             }
 
             return CACHE_MANAGER_RES_OK;
@@ -365,8 +364,8 @@ cache_manager_res_t cm_open(cache_manager_t* cm, int id, cache_manager_node_t** 
             *node_p = node;
 
             if (cm->mode == CACHE_MANAGER_MODE_FIFO) {
-                cm_node_fifo_read(cm);
-                cm_node_fifo_write(cm);
+                cm_node_fifo_pop(cm);
+                cm_node_fifo_push(cm);
             }
 
             return CACHE_MANAGER_RES_OK;
@@ -384,6 +383,11 @@ cache_manager_res_t cm_invalidate(cache_manager_t* cm, int id)
 {
     if (id == CACHE_MANAGER_INVALIDATE_ID) {
         return CACHE_MANAGER_RES_ERR_ID_INVALIDATE;
+    }
+
+    if (cm->mode == CACHE_MANAGER_MODE_FIFO) {
+        CM_LOG_WARN("FIFO mode not support invalidate");
+        return CACHE_MANAGER_RES_ERR_MODE;
     }
 
     for (uint32_t i = 0; i < cm->cache_num; i++) {
